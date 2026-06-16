@@ -44,7 +44,7 @@ CREATE TABLE IF NOT EXISTS issue_records (
     book_id INTEGER REFERENCES books(id) ON DELETE CASCADE,
     student_id INTEGER REFERENCES students(id) ON DELETE CASCADE,
     issue_date TIMESTAMP NOT NULL,
-    due_date TIMESTAMP NOT NULL,
+    due_date TIMESTAMP,
     return_date TIMESTAMP,
     status VARCHAR(50) DEFAULT 'Issued',
     fine_amount DECIMAL(10, 2) DEFAULT 0.00

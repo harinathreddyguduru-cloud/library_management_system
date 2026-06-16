@@ -2,17 +2,23 @@ import React, { useState, useCallback } from "react";
 import { borrowAPI } from "../../api";
 import { useApi } from "../../hooks/useApi";
 import { PageSpinner, Alert, Badge, EmptyState, Modal, Spinner } from "../../components/common/UI";
-import Shell from "../../components/layout/Shell";
 
-const FILTERS = ["all", "borrowed", "returned", "overdue"];
+const FILTERS = [
+  { value: "all", label: "All" },
+  { value: "issued", label: "Issued" },
+  { value: "requested", label: "Borrow Requests" },
+  { value: "return requested", label: "Return Requests" },
+  { value: "returned", label: "Returned" },
+  { value: "overdue", label: "Overdue" },
+];
 
 const BorrowRecords = () => {
-  const [filter,   setFilter]   = useState("all");
-  const [search,   setSearch]   = useState("");
-  const [page,     setPage]     = useState(1);
-  const [confirm,  setConfirm]  = useState(null);
-  const [returning, setReturning] = useState(null);
-  const [toast,    setToast]    = useState(null);
+  const [filter,    setFilter]    = useState("all");
+  const [search,    setSearch]    = useState("");
+  const [page,      setPage]      = useState(1);
+  const [confirm,   setConfirm]   = useState(null);
+  const [loadingAction, setLoadingAction] = useState(false);
+  const [toast,     setToast]     = useState(null);
 
   const fetcher = useCallback(
     () => borrowAPI.allBorrows({ status: filter === "all" ? "" : filter, search, page, limit: 15 }),
@@ -23,20 +29,37 @@ const BorrowRecords = () => {
   const records    = data?.borrows    || [];
   const totalPages = data?.totalPages || 1;
 
-  const handleReturn = async () => {
+  const handleApprove = async () => {
     if (!confirm) return;
-    setReturning(confirm._id);
+    setLoadingAction(true);
     try {
-      await borrowAPI.return(confirm._id);
-      setToast({ type: "success", msg: "Book marked as returned." });
+      if (confirm.action === "approveBorrow") {
+        await borrowAPI.approveBorrow(confirm.record._id);
+        setToast({ type: "success", msg: "Borrow request approved." });
+      } else if (confirm.action === "approveReturn") {
+        await borrowAPI.approveReturn(confirm.record._id);
+        setToast({ type: "success", msg: "Return request approved." });
+      } else if (confirm.action === "markReturned") {
+        await borrowAPI.return(confirm.record._id);
+        setToast({ type: "success", msg: "Book marked as returned." });
+      }
       refetch();
+      // notify other admin views (dashboard) to refresh
+      try {
+        window.dispatchEvent(new Event("dashboardRefresh"));
+      } catch (e) {
+        // ignore when not running in browser env
+      }
     } catch (e) {
       setToast({ type: "error", msg: e.response?.data?.message || "Failed." });
-    } finally { setReturning(null); setConfirm(null); }
+    } finally {
+      setLoadingAction(false);
+      setConfirm(null);
+    }
   };
 
   return (
-    <Shell>
+    <>
       <div className="mb-6">
         <h1 className="font-display font-bold text-ink text-2xl md:text-3xl">Borrow Records</h1>
         <p className="text-gray-400 text-sm mt-1">All borrowing activity across the library</p>
@@ -54,11 +77,11 @@ const BorrowRecords = () => {
         </div>
         <div className="flex gap-1 bg-gray-100 p-1 rounded-xl">
           {FILTERS.map(f => (
-            <button key={f} onClick={() => { setFilter(f); setPage(1); }}
-              className={`px-3 py-1.5 rounded-lg text-xs font-semibold capitalize transition ${
-                filter === f ? "bg-white text-primary-700 shadow-sm" : "text-gray-500 hover:text-gray-700"
+            <button key={f.value} onClick={() => { setFilter(f.value); setPage(1); }}
+              className={`px-3 py-1.5 rounded-lg text-xs font-semibold transition ${
+                filter === f.value ? "bg-white text-primary-700 shadow-sm" : "text-gray-500 hover:text-gray-700"
               }`}>
-              {f}
+              {f.label}
             </button>
           ))}
         </div>
@@ -81,7 +104,9 @@ const BorrowRecords = () => {
                   </thead>
                   <tbody className="divide-y divide-gray-50">
                     {records.map((b) => {
-                      const days = Math.ceil((new Date(b.dueDate) - Date.now()) / 86400000);
+                      const dueDate = b.dueDate ? new Date(b.dueDate) : null;
+                      const days = dueDate ? Math.ceil((dueDate - Date.now()) / 86400000) : null;
+                      const statusLabel = b.status === "issued" ? "Issued" : b.status === "requested" ? "Requested" : b.status === "return requested" ? "Return Requested" : b.status === "returned" ? "Returned" : b.status;
                       return (
                         <tr key={b._id} className="hover:bg-gray-50 transition">
                           <td className="px-5 py-3.5">
@@ -94,20 +119,34 @@ const BorrowRecords = () => {
                           </td>
                           <td className="px-5 py-3.5 text-gray-400 text-xs">{b.student?.studentId || "—"}</td>
                           <td className="px-5 py-3.5 text-gray-600 max-w-[160px] truncate">{b.book?.title}</td>
-                          <td className="px-5 py-3.5 text-gray-400">{new Date(b.borrowedAt).toLocaleDateString("en-IN")}</td>
+                          <td className="px-5 py-3.5 text-gray-400">
+                            {b.borrowedAt ? new Date(b.borrowedAt).toLocaleDateString("en-IN") : "—"}
+                          </td>
                           <td className="px-5 py-3.5">
-                            <span className="text-gray-500">{new Date(b.dueDate).toLocaleDateString("en-IN")}</span>
-                            {b.status !== "returned" && days < 0 && (
+                            <span className="text-gray-500">{dueDate ? dueDate.toLocaleDateString("en-IN") : "—"}</span>
+                            {dueDate && b.status !== "returned" && days < 0 && (
                               <p className="text-xs text-red-500 mt-0.5">Overdue</p>
                             )}
                           </td>
                           <td className="px-5 py-3.5">
-                            <Badge label={b.status}
-                              variant={b.status === "overdue" ? "overdue" : b.status === "returned" ? "returned" : "borrowed"} />
+                            <Badge label={statusLabel}
+                              variant={b.status === "overdue" ? "overdue" : b.status === "returned" ? "returned" : b.status === "requested" ? "requested" : b.status === "return requested" ? "return requested" : "borrowed"} />
                           </td>
                           <td className="px-5 py-3.5">
-                            {b.status !== "returned" && (
-                              <button onClick={() => setConfirm(b)}
+                            {b.status === "requested" && (
+                              <button onClick={() => setConfirm({ record: b, action: "approveBorrow" })}
+                                className="text-xs px-2.5 py-1 rounded-lg bg-blue-50 text-blue-700 hover:bg-blue-100 font-medium transition">
+                                Approve Borrow
+                              </button>
+                            )}
+                            {b.status === "return requested" && (
+                              <button onClick={() => setConfirm({ record: b, action: "approveReturn" })}
+                                className="text-xs px-2.5 py-1 rounded-lg bg-amber-50 text-amber-700 hover:bg-amber-100 font-medium transition">
+                                Approve Return
+                              </button>
+                            )}
+                            {(b.status === "issued" || b.status === "overdue") && (
+                              <button onClick={() => setConfirm({ record: b, action: "markReturned" })}
                                 className="text-xs px-2.5 py-1 rounded-lg bg-green-50 text-green-700 hover:bg-green-100 font-medium transition">
                                 Mark Returned
                               </button>
@@ -132,18 +171,20 @@ const BorrowRecords = () => {
         )
       )}
 
-      <Modal isOpen={!!confirm} onClose={() => setConfirm(null)} title="Mark as Returned">
-        <p className="text-gray-600 text-sm mb-1">Mark this borrow as returned?</p>
-        <p className="font-semibold text-ink">{confirm?.student?.name}</p>
+      <Modal isOpen={!!confirm} onClose={() => setConfirm(null)} title={confirm?.action === "approveBorrow" ? "Approve Borrow Request" : confirm?.action === "approveReturn" ? "Approve Return Request" : "Mark as Returned"}>
+        <p className="text-gray-600 text-sm mb-1">
+          {confirm?.action === "approveBorrow" ? "Approve borrow request for:" : confirm?.action === "approveReturn" ? "Approve return request for:" : "Mark this borrow as returned?"}
+        </p>
+        <p className="font-semibold text-ink mb-1">{confirm?.student?.name}</p>
         <p className="text-gray-400 text-sm mb-5">"{confirm?.book?.title}"</p>
         <div className="flex gap-3">
           <button onClick={() => setConfirm(null)} className="btn-secondary flex-1">Cancel</button>
-          <button onClick={handleReturn} disabled={!!returning} className="btn-primary flex-1 flex items-center justify-center gap-2">
-            {returning ? <><Spinner size="sm" /> Processing…</> : "Confirm Return"}
+          <button onClick={handleApprove} disabled={loadingAction} className="btn-primary flex-1 flex items-center justify-center gap-2">
+            {loadingAction ? <><Spinner size="sm" /> Processing…</> : confirm?.action === "approveBorrow" ? "Approve Borrow" : confirm?.action === "approveReturn" ? "Approve Return" : "Confirm Return"}
           </button>
         </div>
       </Modal>
-    </Shell>
+    </>
   );
 };
 

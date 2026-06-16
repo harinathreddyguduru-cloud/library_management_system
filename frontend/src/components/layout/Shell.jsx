@@ -76,6 +76,15 @@ const Sidebar = ({ mobile = false, onClose }) => {
           <div className="min-w-0">
             <p className="text-sm font-semibold text-ink truncate">{user?.name || "User"}</p>
             <p className="text-[10px] text-gray-400 truncate capitalize">{user?.role || "student"}</p>
+            {user?.rollNumber && (
+              <p className="text-[10px] text-gray-500 truncate">ID: {user.rollNumber}</p>
+            )}
+            {user?.department && user?.semester && (
+              <p className="text-[10px] text-gray-500 truncate">{user.department}, Sem {user.semester}</p>
+            )}
+            {user?.phone && (
+              <p className="text-[10px] text-gray-500 truncate">📱 {user.phone}</p>
+            )}
           </div>
         </div>
         <button

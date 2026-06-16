@@ -7,6 +7,7 @@ router.get("/", async (req, res) => {
     const { search, status } = req.query;
     const conditions = [];
     const values = [];
+    const overdueStatusFilter = status && status.toLowerCase() === "overdue";
 
     let query = `
       SELECT
@@ -14,8 +15,21 @@ router.get("/", async (req, res) => {
         ir.issue_date,
         ir.due_date,
         ir.return_date,
-        ir.status,
-        ir.fine_amount,
+        CASE
+          WHEN LOWER(ir.status) = 'issued' AND (ir.due_date AT TIME ZONE 'Asia/Calcutta') < NOW()
+            THEN 'Overdue'
+          ELSE ir.status
+        END AS status,
+        CASE
+          WHEN LOWER(ir.status) = 'issued' AND (ir.due_date AT TIME ZONE 'Asia/Calcutta') < NOW()
+            THEN CEIL(EXTRACT(epoch FROM (NOW() - (ir.due_date AT TIME ZONE 'Asia/Calcutta'))) / 86400)::int
+          ELSE 0
+        END AS overdue_days,
+        CASE
+          WHEN LOWER(ir.status) = 'issued' AND (ir.due_date AT TIME ZONE 'Asia/Calcutta') < NOW()
+            THEN CEIL(EXTRACT(epoch FROM (NOW() - (ir.due_date AT TIME ZONE 'Asia/Calcutta'))) / 86400)::int * 5
+          ELSE COALESCE(ir.fine_amount, 0)
+        END AS fine_amount,
         b.title AS book_title,
         b.author AS book_author,
         s.roll_number,
@@ -28,8 +42,12 @@ router.get("/", async (req, res) => {
     `;
 
     if (status) {
-      conditions.push("LOWER(ir.status) = LOWER($" + (values.length + 1) + ")");
-      values.push(status);
+      if (overdueStatusFilter) {
+        conditions.push("LOWER(ir.status) = 'issued' AND (ir.due_date AT TIME ZONE 'Asia/Calcutta') < NOW()");
+      } else {
+        conditions.push("LOWER(ir.status) = LOWER($" + (values.length + 1) + ")");
+        values.push(status);
+      }
     }
 
     if (search) {
@@ -57,7 +75,6 @@ router.post("/issue", async (req, res) => {
   try {
     const { book_id, student_id } = req.body;
 
-    // Check book availability
     const bookResult = await pool.query(
       "SELECT * FROM books WHERE id = $1",
       [book_id]
@@ -77,14 +94,22 @@ router.post("/issue", async (req, res) => {
       });
     }
 
-    // Issue date
-    const issueDate = new Date();
+    const existingRequest = await pool.query(
+      `SELECT * FROM issue_records
+       WHERE book_id = $1
+         AND student_id = $2
+         AND status IN ('Requested', 'Issued', 'Return Requested')`,
+      [book_id, student_id]
+    );
 
-    // Due date = 14 days later
-    const dueDate = new Date();
-    dueDate.setDate(dueDate.getDate() + 14);
+    if (existingRequest.rows.length > 0) {
+      return res.status(400).json({
+        message: "You already have a pending request or an active borrow for this book."
+      });
+    }
 
-    // Create issue record
+    const requestDate = new Date();
+
     await pool.query(
       `INSERT INTO issue_records
       (book_id, student_id, issue_date, due_date, status)
@@ -92,33 +117,95 @@ router.post("/issue", async (req, res) => {
       [
         book_id,
         student_id,
-        issueDate,
-        dueDate,
-        "Issued"
+        requestDate,
+        null,
+        "Requested"
       ]
     );
 
-    // Reduce availability
-    await pool.query(
-      `UPDATE books
-       SET available_count = available_count - 1
-       WHERE id = $1`,
-      [book_id]
-    );
-
     res.status(201).json({
-      message: "Book issued successfully",
-      due_date: dueDate
+      message: "Borrow request submitted. Admin approval is required."
     });
 
   } catch (error) {
     console.error(error);
 
     res.status(500).json({
-      message: "Issue failed"
+      message: "Issue request failed"
     });
   }
 });
+
+router.post("/approve", async (req, res) => {
+  try {
+    const { issue_id } = req.body;
+
+    const issueResult = await pool.query(
+      "SELECT * FROM issue_records WHERE id = $1",
+      [issue_id]
+    );
+
+    if (issueResult.rows.length === 0) {
+      return res.status(404).json({
+        message: "Issue request not found"
+      });
+    }
+
+    const issue = issueResult.rows[0];
+
+    if (issue.status !== "Requested") {
+      return res.status(400).json({
+        message: "Only requested borrow records can be approved."
+      });
+    }
+
+    const bookResult = await pool.query(
+      "SELECT * FROM books WHERE id = $1",
+      [issue.book_id]
+    );
+
+    const book = bookResult.rows[0];
+
+    if (!book || book.available_count <= 0) {
+      return res.status(400).json({
+        message: "Book is no longer available to issue."
+      });
+    }
+
+    const issueDate = new Date();
+    const dueDate = new Date();
+    dueDate.setTime(dueDate.getTime() + 7 * 24 * 60 * 60 * 1000); // 7 days due duration
+
+    await pool.query(
+      `UPDATE issue_records
+       SET issue_date = $1,
+           due_date = $2,
+           status = $3
+       WHERE id = $4`,
+      [issueDate, dueDate, "Issued", issue_id]
+    );
+
+    await pool.query(
+      `UPDATE books
+       SET available_count = available_count - 1
+       WHERE id = $1`,
+      [issue.book_id]
+    );
+
+    res.json({
+      message: "Borrow request approved.",
+      issue_id,
+      due_date: dueDate
+    });
+  } catch (error) {
+    console.error(error);
+
+    res.status(500).json({
+      message: "Approval failed"
+    });
+  }
+});
+
 router.post("/return", async (req, res) => {
   try {
     const { issue_id } = req.body;
@@ -142,8 +229,56 @@ router.post("/return", async (req, res) => {
       });
     }
 
-    const returnDate = new Date();
+    if (issue.status !== "Issued") {
+      return res.status(400).json({
+        message: "Only issued books can be requested for return."
+      });
+    }
 
+    await pool.query(
+      `UPDATE issue_records
+       SET status = $1
+       WHERE id = $2`,
+      ["Return Requested", issue_id]
+    );
+
+    res.json({
+      message: "Return request submitted. Admin approval is required."
+    });
+
+  } catch (error) {
+    console.error(error);
+
+    res.status(500).json({
+      message: "Return request failed"
+    });
+  }
+});
+
+router.post("/approve-return", async (req, res) => {
+  try {
+    const { issue_id } = req.body;
+
+    const issueResult = await pool.query(
+      "SELECT * FROM issue_records WHERE id = $1",
+      [issue_id]
+    );
+
+    if (issueResult.rows.length === 0) {
+      return res.status(404).json({
+        message: "Issue record not found"
+      });
+    }
+
+    const issue = issueResult.rows[0];
+
+    if (issue.status !== "Return Requested") {
+      return res.status(400).json({
+        message: "Only return requests can be approved."
+      });
+    }
+
+    const returnDate = new Date();
     let fine = 0;
 
     if (returnDate > issue.due_date) {
@@ -151,7 +286,6 @@ router.post("/return", async (req, res) => {
         (returnDate - new Date(issue.due_date)) /
         (1000 * 60 * 60 * 24)
       );
-
       fine = overdueDays * 5;
     }
 
@@ -161,12 +295,7 @@ router.post("/return", async (req, res) => {
            status = $2,
            fine_amount = $3
        WHERE id = $4`,
-      [
-        returnDate,
-        "Returned",
-        fine,
-        issue_id
-      ]
+      [returnDate, "Returned", fine, issue_id]
     );
 
     await pool.query(
@@ -177,7 +306,7 @@ router.post("/return", async (req, res) => {
     );
 
     res.json({
-      message: "Book returned successfully",
+      message: "Return request approved and book returned.",
       fine_amount: fine
     });
 
@@ -185,8 +314,9 @@ router.post("/return", async (req, res) => {
     console.error(error);
 
     res.status(500).json({
-      message: "Return failed"
+      message: "Return approval failed"
     });
   }
 });
+
 module.exports = router;

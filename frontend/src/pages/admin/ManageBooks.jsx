@@ -2,7 +2,6 @@ import React, { useState, useCallback } from "react";
 import { booksAPI } from "../../api";
 import { useApi } from "../../hooks/useApi";
 import { PageSpinner, Alert, Badge, EmptyState, Modal, Spinner } from "../../components/common/UI";
-import Shell from "../../components/layout/Shell";
 
 const EMPTY_FORM = {
   title: "", author: "", isbn: "", publisher: "", category_id: "", shelf_location: "",
@@ -119,7 +118,7 @@ const ManageBooks = () => {
   };
 
   return (
-    <Shell>
+    <>
       <div className="flex items-start justify-between mb-6 gap-4">
         <div>
           <h1 className="font-display font-bold text-ink text-2xl md:text-3xl">Manage Books</h1>
@@ -207,7 +206,7 @@ const ManageBooks = () => {
           </button>
         </div>
       </Modal>
-    </Shell>
+    </>
   );
 };
 

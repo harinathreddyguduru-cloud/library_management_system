@@ -4,7 +4,6 @@ import { useAuth } from "../../context/AuthContext";
 import { borrowAPI, booksAPI } from "../../api";
 import { useApi } from "../../hooks/useApi";
 import { StatCard, PageSpinner, Alert, Badge } from "../../components/common/UI";
-import Shell from "../../components/layout/Shell";
 
 const greet = () => {
   const h = new Date().getHours();
@@ -23,9 +22,10 @@ const StudentDashboard = () => {
   );
   const { data: booksData, loading: cLoading } = useApi(booksAPI.getAll, [], true);
 
-  const active  = borrows?.filter((b) => b.status === "borrowed")  || [];
-  const overdue = borrows?.filter((b) => b.status === "overdue")   || [];
-  const history = borrows?.filter((b) => b.status === "returned")  || [];
+  const active = borrows?.filter((b) => ["issued", "overdue", "return requested"].includes(b.status)) || [];
+  const overdue = borrows?.filter((b) => b.status === "overdue") || [];
+  const history = borrows?.filter((b) => b.status === "returned") || [];
+  const totalFine = borrows?.reduce((sum, b) => sum + (parseFloat(b.fineAmount) || 0), 0) || 0;
 
   const dueSoon = active.filter((b) => {
     const days = Math.ceil((new Date(b.dueDate) - Date.now()) / 86400000);
@@ -33,7 +33,7 @@ const StudentDashboard = () => {
   });
 
   return (
-    <Shell>
+    <>
       {/* Header */}
       <div className="mb-7">
         <h1 className="font-display font-bold text-ink text-2xl md:text-3xl">
@@ -51,7 +51,7 @@ const StudentDashboard = () => {
 
           <div className="grid grid-cols-2 lg:grid-cols-4 gap-4 mb-8">
             <StatCard icon="📖" label="Currently Borrowed" value={active.length}  color="primary" />
-            <StatCard icon="⚠️" label="Overdue"            value={overdue.length} color="red"     />
+            <StatCard icon="⚠️" label="Overdue"            value={overdue.length} color="red"     sub={`Fines ₹${totalFine.toFixed(2)}`} />
             <StatCard icon="✅" label="Returned"           value={history.length} color="green"   />
             <StatCard icon="📚" label="Total Books"        value={booksData?.total ?? "—"} color="amber" />
           </div>
@@ -129,7 +129,7 @@ const StudentDashboard = () => {
           </div>
         </>
       )}
-    </Shell>
+    </>
   );
 };
 

@@ -2,7 +2,6 @@ import React, { useState, useCallback } from "react";
 import { studentsAPI } from "../../api";
 import { useApi } from "../../hooks/useApi";
 import { PageSpinner, Alert, Badge, EmptyState, Modal, Spinner } from "../../components/common/UI";
-import Shell from "../../components/layout/Shell";
 
 const Students = () => {
   const [search,  setSearch]  = useState("");
@@ -34,7 +33,7 @@ const Students = () => {
   };
 
   return (
-    <Shell>
+    <>
       <div className="mb-6">
         <h1 className="font-display font-bold text-ink text-2xl md:text-3xl">Students</h1>
         <p className="text-gray-400 text-sm mt-1">Manage registered student accounts</p>
@@ -154,7 +153,7 @@ const Students = () => {
           </button>
         </div>
       </Modal>
-    </Shell>
+    </>
   );
 };
 

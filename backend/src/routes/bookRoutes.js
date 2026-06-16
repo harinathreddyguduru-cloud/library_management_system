@@ -5,11 +5,42 @@ const pool = require("../config/db");
 // GET all books
 router.get("/", async (req, res) => {
   try {
-    const result = await pool.query(
-      "SELECT * FROM books ORDER BY id"
-    );
+    const { search = "", genre = "", page = 1, limit = 100 } = req.query;
+    const values = [];
+    let whereClauses = [];
 
-    res.json(result.rows);
+    if (search) {
+      values.push(`%${search.trim()}%`);
+      values.push(`%${search.trim()}%`);
+      values.push(`%${search.trim()}%`);
+      whereClauses.push(`(b.title ILIKE $${values.length - 2} OR b.author ILIKE $${values.length - 1} OR b.isbn ILIKE $${values.length})`);
+    }
+
+    if (genre) {
+      values.push(genre.trim());
+      whereClauses.push(`c.name ILIKE $${values.length}`);
+    }
+
+    let query = `SELECT
+         b.*,
+         c.name AS category_name
+       FROM books b
+       LEFT JOIN categories c ON b.category_id = c.id`;
+
+    const countQuery = query + (whereClauses.length ? ` WHERE ${whereClauses.join(" AND ")}` : "");
+    const countResult = await pool.query(countQuery.replace(/SELECT[\s\S]*?FROM books b/iu, "SELECT COUNT(*) AS total FROM books b"), values);
+
+    if (whereClauses.length) {
+      query += ` WHERE ${whereClauses.join(" AND ")}`;
+    }
+
+    query += ` ORDER BY b.id LIMIT $${values.length + 1} OFFSET $${values.length + 2}`;
+    values.push(parseInt(limit, 10));
+    values.push((Math.max(parseInt(page, 10), 1) - 1) * parseInt(limit, 10));
+
+    const result = await pool.query(query, values);
+
+    res.json({ rows: result.rows, total: parseInt(countResult.rows[0].total, 10) });
   } catch (error) {
     console.error(error);
     res.status(500).json({

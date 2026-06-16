@@ -20,6 +20,14 @@ router.get("/dashboard", async (req, res) => {
       "SELECT COUNT(*) FROM students"
     );
 
+    const borrowRequests = await pool.query(
+      "SELECT COUNT(*) FROM issue_records WHERE status = 'Requested'"
+    );
+
+    const returnRequests = await pool.query(
+      "SELECT COUNT(*) FROM issue_records WHERE status = 'Return Requested'"
+    );
+
     res.json({
       totalBooks: parseInt(totalBooks.rows[0].count),
       availableBooks: parseInt(
@@ -28,6 +36,8 @@ router.get("/dashboard", async (req, res) => {
       issuedBooks: parseInt(
         issuedBooks.rows[0].count
       ),
+      borrowRequests: parseInt(borrowRequests.rows[0].count),
+      returnRequests: parseInt(returnRequests.rows[0].count),
       totalStudents: parseInt(
         totalStudents.rows[0].count
       ),
@@ -50,7 +60,13 @@ router.get("/overdue-books", async (req, res) => {
         s.roll_number,
         u.name,
         ir.issue_date,
-        ir.due_date
+        ir.due_date,
+        CEIL(EXTRACT(epoch FROM (NOW() - (ir.due_date AT TIME ZONE 'Asia/Calcutta'))) / 86400)::int AS overdue_days,
+        CASE
+          WHEN LOWER(ir.status) = 'issued' AND (ir.due_date AT TIME ZONE 'Asia/Calcutta') < NOW()
+            THEN CEIL(EXTRACT(epoch FROM (NOW() - (ir.due_date AT TIME ZONE 'Asia/Calcutta'))) / 86400)::int * 5
+          ELSE COALESCE(ir.fine_amount, 0)
+        END AS fine_amount
       FROM issue_records ir
       JOIN books b
         ON ir.book_id = b.id
@@ -58,8 +74,8 @@ router.get("/overdue-books", async (req, res) => {
         ON ir.student_id = s.id
       JOIN users u
         ON s.user_id = u.id
-      WHERE ir.status = 'Issued'
-      AND ir.due_date < CURRENT_DATE
+      WHERE LOWER(ir.status) = 'issued'
+      AND (ir.due_date AT TIME ZONE 'Asia/Calcutta') < NOW()
       ORDER BY ir.due_date ASC
     `);
 

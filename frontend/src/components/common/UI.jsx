@@ -43,13 +43,15 @@ export const Alert = ({ type = "info", message, onClose }) => {
 
 // ─── Badge ───────────────────────────────────────────────────────────────────
 const badgeVariants = {
-  available:  "bg-green-100  text-green-700",
-  borrowed:   "bg-amber-100  text-amber-700",
-  overdue:    "bg-red-100    text-red-700",
-  returned:   "bg-blue-100   text-blue-700",
-  admin:      "bg-primary-100 text-primary-700",
-  student:    "bg-gray-100   text-gray-600",
-  default:    "bg-gray-100   text-gray-600",
+  available:       "bg-green-100  text-green-700",
+  borrowed:        "bg-amber-100  text-amber-700",
+  overdue:         "bg-red-100    text-red-700",
+  returned:        "bg-blue-100   text-blue-700",
+  requested:       "bg-indigo-100 text-indigo-700",
+  "return requested": "bg-amber-100 text-amber-700",
+  admin:           "bg-primary-100 text-primary-700",
+  student:         "bg-gray-100   text-gray-600",
+  default:         "bg-gray-100   text-gray-600",
 };
 
 export const Badge = ({ label, variant = "default" }) => (

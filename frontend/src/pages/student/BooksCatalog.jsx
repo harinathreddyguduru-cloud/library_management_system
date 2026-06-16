@@ -2,11 +2,30 @@ import React, { useState, useCallback } from "react";
 import { booksAPI, borrowAPI } from "../../api";
 import { useApi } from "../../hooks/useApi";
 import { PageSpinner, Alert, Badge, EmptyState, Modal, Spinner } from "../../components/common/UI";
-import Shell from "../../components/layout/Shell";
 import { useAuth } from "../../context/AuthContext";
 
-const GENRES = ["All", "Computer Science", "Engineering", "Mathematics", "Physics", "Chemistry",
-  "Biology", "History", "Literature", "Business", "Law", "Medicine", "Arts"];
+const GENRES = [
+  "All",
+  "Computer Science",
+  "Information Technology",
+  "Electrical Engineering",
+  "Mathematics",
+  "Fiction",
+  "Programming",
+  "Data Structures",
+  "Algorithms",
+  "Database",
+  "Operating Systems",
+  "Networking",
+  "Computer Architecture",
+  "Digital Electronics",
+  "Electronics",
+  "Civil Engineering",
+  "Mechanical Engineering",
+  "AI & ML",
+  "Cyber Security",
+  "Software Engineering",
+];
 
 const BookCard = ({ book, onBorrow, borrowing }) => {
   const avail = book.availableCopies > 0;
@@ -40,7 +59,7 @@ const BookCard = ({ book, onBorrow, borrowing }) => {
               : "bg-gray-100 text-gray-400 cursor-not-allowed"
           }`}
         >
-          {borrowing === book._id ? <Spinner size="sm" /> : avail ? "Borrow" : "Unavailable"}
+          {borrowing === book._id ? <Spinner size="sm" /> : avail ? "Request Borrow" : "Unavailable"}
         </button>
       </div>
     </div>
@@ -83,7 +102,7 @@ const BooksCatalog = () => {
   };
 
   return (
-    <Shell>
+    <>
       <div className="mb-6">
         <h1 className="font-display font-bold text-ink text-2xl md:text-3xl">Book Catalog</h1>
         <p className="text-gray-400 text-sm mt-1">Browse and borrow from our collection</p>
@@ -144,16 +163,16 @@ const BooksCatalog = () => {
         <p className="font-semibold text-ink mb-1">"{confirm?.title}"</p>
         <p className="text-gray-400 text-sm mb-5">by {confirm?.author}</p>
         <p className="text-xs text-amber-600 bg-amber-50 rounded-lg px-3 py-2 mb-6">
-          ⚠ Please return this book within the allotted period to avoid fines.
+          ⚠ Your borrow request will be sent to the admin for approval.
         </p>
         <div className="flex gap-3">
           <button onClick={() => setConfirm(null)} className="btn-secondary flex-1">Cancel</button>
           <button onClick={handleBorrow} disabled={!!borrowing} className="btn-primary flex-1 flex items-center justify-center gap-2">
-            {borrowing ? <><Spinner size="sm" /> Borrowing…</> : "Confirm Borrow"}
+            {borrowing ? <><Spinner size="sm" /> Requesting…</> : "Confirm Request"}
           </button>
         </div>
       </Modal>
-    </Shell>
+    </>
   );
 };
 

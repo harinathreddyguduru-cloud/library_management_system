@@ -57,8 +57,21 @@ router.get("/:id/history", async (req, res) => {
         ir.issue_date,
         ir.due_date,
         ir.return_date,
-        ir.status,
-        ir.fine_amount
+        CASE
+          WHEN LOWER(ir.status) = 'issued' AND (ir.due_date AT TIME ZONE 'Asia/Calcutta') < NOW()
+            THEN 'Overdue'
+          ELSE ir.status
+        END AS status,
+        CASE
+          WHEN LOWER(ir.status) = 'issued' AND (ir.due_date AT TIME ZONE 'Asia/Calcutta') < NOW()
+            THEN CEIL(EXTRACT(epoch FROM (NOW() - (ir.due_date AT TIME ZONE 'Asia/Calcutta'))) / 86400)::int
+          ELSE 0
+        END AS overdue_days,
+        CASE
+          WHEN LOWER(ir.status) = 'issued' AND (ir.due_date AT TIME ZONE 'Asia/Calcutta') < NOW()
+            THEN CEIL(EXTRACT(epoch FROM (NOW() - (ir.due_date AT TIME ZONE 'Asia/Calcutta'))) / 86400)::int * 5
+          ELSE COALESCE(ir.fine_amount, 0)
+        END AS fine_amount
       FROM issue_records ir
       JOIN books b
         ON ir.book_id = b.id

@@ -44,6 +44,9 @@ const mapBorrowRecord = (record) => ({
   borrowedAt: record.issue_date,
   dueDate: record.due_date,
   returnedAt: record.return_date,
+  status: (record.status || record.computed_status || "").toLowerCase(),
+  fineAmount: record.fine_amount ?? record.calculated_fine ?? 0,
+  overdueDays: record.overdue_days ?? 0,
   book: {
     title: record.book_title || record.title,
     author: record.book_author || record.author,
@@ -61,13 +64,16 @@ export const authAPI = {
 };
 
 export const booksAPI = {
-  getAll: (params) => api.get("/api/books", { params }).then((res) => ({
-    data: {
-      books: res.data.map(mapBook),
-      totalPages: 1,
-      total: res.data.length,
-    },
-  })),
+  getAll: (params) => api.get("/api/books", { params }).then((res) => {
+    const limit = params?.limit ? parseInt(params.limit, 10) : 12;
+    return {
+      data: {
+        books: res.data.rows.map(mapBook),
+        total: res.data.total || res.data.rows.length,
+        totalPages: Math.max(1, Math.ceil((res.data.total || res.data.rows.length) / limit)),
+      },
+    };
+  }),
   create: (data) => api.post("/api/books", data),
   update: (id, data) => api.put(`/api/books/${id}`, data),
   delete: (id) => api.delete(`/api/books/${id}`),
@@ -79,7 +85,9 @@ export const categoriesAPI = {
 
 export const borrowAPI = {
   borrow: (bookId, studentId) => api.post("/api/issues/issue", { book_id: bookId, student_id: studentId }),
-  return: (issueId) => api.post("/api/issues/return", { issue_id: issueId }),
+  requestReturn: (issueId) => api.post("/api/issues/return", { issue_id: issueId }),
+  approveBorrow: (issueId) => api.post("/api/issues/approve", { issue_id: issueId }),
+  approveReturn: (issueId) => api.post("/api/issues/approve-return", { issue_id: issueId }),
   myBorrows: (studentId) => api.get(`/api/student/${studentId}/history`).then((res) => ({ data: res.data.map(mapBorrowRecord) })),
   allBorrows: (params) => api.get("/api/issues", { params }).then((res) => ({ data: { borrows: res.data.map(mapBorrowRecord) } })),
 };
