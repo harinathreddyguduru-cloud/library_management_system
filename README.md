@@ -141,3 +141,4 @@ Ensure your backend is running at `http://localhost:5000`.
 3. All Axios requests auto-attach `Authorization: Bearer <token>`
 4. `ProtectedRoute` checks `user` (and `adminOnly` flag) before rendering
 5. 401 response → auto logout + redirect to `/login`
+"# digital_library" 
